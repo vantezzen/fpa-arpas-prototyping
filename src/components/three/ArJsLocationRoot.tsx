@@ -17,6 +17,7 @@ function Root() {
         gl.setSize(window.innerWidth, window.innerHeight);
         // gl.setSize(640, 480);
       }}
+      // @ts-ignore
       cameraParametersUrl={"/data/camera_para.dat"}
     >
       <ambientLight />
@@ -28,6 +29,7 @@ function Root() {
           console.log("Marker Found");
         }}
         params={{ smooth: true }}
+        // @ts-ignore
         debug
       >
         <mesh>

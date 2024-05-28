@@ -8,9 +8,11 @@ function AFrameArJsRoot() {
       <a-scene
         vr-mode-ui="enabled: false;"
         renderer="logarithmicDepthBuffer: true;"
+        // @ts-ignore
         embedded
         arjs="debugUIEnabled: true;"
       >
+        {/* @ts-ignore */}
         <a-marker preset="hiro">
           <a-box
             position="0 0.5 0"
@@ -22,7 +24,9 @@ function AFrameArJsRoot() {
               animation="property: rotation; to:360 0 0; dur: 5000; easing: linear; loop: true"
             ></a-torus-knot>
           </a-box>
+          {/* @ts-ignore */}
         </a-marker>
+        {/* @ts-ignore */}
         <a-entity camera></a-entity>
       </a-scene>
     </>
