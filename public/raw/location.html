@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Location-based markers</title>
+
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script
+      type="text/javascript"
+      src="https://raw.githack.com/AR-js-org/AR.js/master/three.js/build/ar-threex-location-only.js"
+    ></script>
+    <script
+      type="text/javascript"
+      src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"
+    ></script>
+
+    <style>
+      :root {
+        --accent: #007bff;
+        --accent-text: #ffffff;
+        --text-light: #ffffff;
+        --disabled: #6c757d;
+      }
+
+      button,
+      .button,
+      a.button,
+      input[type="submit"],
+      input[type="reset"],
+      input[type="button"],
+      label[type="button"] {
+        border: 1px solid var(--accent);
+        background-color: var(--accent);
+        color: var(--accent-text);
+        padding: 0.5rem 0.9rem;
+        line-height: normal;
+        text-decoration: none;
+        margin: 5px;
+        border-radius: 0.3rem;
+        touch-action: none;
+      }
+
+      .button[aria-disabled="true"],
+      input:disabled,
+      textarea:disabled,
+      select:disabled,
+      button[disabled] {
+        cursor: not-allowed;
+        background-color: var(--disabled);
+        border-color: var(--disabled);
+        color: var(--text-light);
+      }
+    </style>
+  </head>
+  <body>
+    <a-scene
+      vr-mode-ui="enabled: false"
+      arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: true"
+      renderer="antialias: true; alpha: true"
+    >
+      <a-camera
+        gps-new-camera="gpsMinDistance: 1;  simulateLongitude: -122.4194; simulateLatitude: 37.7749; simulateAltitude: 0;
+      "
+      ></a-camera>
+
+      <a-box
+        gps-new-entity-place="latitude: 37.7759; longitude: -122.4194"
+        scale="20 20 20"
+        position="0 10 0"
+        material="color: blue"
+      >
+      </a-box>
+    </a-scene>
+
+    <div style="position: absolute; top: 0; right: 0; display: flex">
+      <button onclick="move(-1, 0)" style="padding: 30px">⬅️</button>
+      <div style="display: flex; flex-direction: column">
+        <button onclick="move(0, 1)" style="padding: 30px">⬆️</button>
+        <button onclick="move(0, -1)" style="padding: 30px">⬇️</button>
+      </div>
+      <button onclick="move(1, 0)" style="padding: 30px">➡️</button>
+    </div>
+
+    <script>
+      const camera = document.querySelector("[gps-new-camera]");
+      const simulatedLocation = {
+        latitude: 37.7749,
+        longitude: -122.4194,
+      };
+
+      const updateSimulatedLocation = () => {
+        camera.setAttribute("gps-new-camera", {
+          gpsMinDistance: 1,
+          simulateLongitude: simulatedLocation.longitude,
+          simulateLatitude: simulatedLocation.latitude,
+        });
+
+        camera.components["gps-new-camera"].threeLoc.fakeGps(
+          simulatedLocation.longitude,
+          simulatedLocation.latitude
+        );
+      };
+
+      updateSimulatedLocation();
+
+      function move(x, y) {
+        const delta = 0.0001;
+        simulatedLocation.latitude += y * delta;
+        simulatedLocation.longitude += x * delta;
+        updateSimulatedLocation();
+      }
+    </script>
+  </body>
+</html>

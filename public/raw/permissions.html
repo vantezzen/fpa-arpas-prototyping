@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <script>
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(showPosition, console.error);
+      } else {
+        // I believe it may also mean geolocation isn't supported
+        alert("Geolocation denied");
+      }
+
+      function showPosition(position) {
+        console.log("Latitude: " + position.coords.latitude);
+        console.log("Longitude: " + position.coords.longitude);
+      }
+    </script>
+  </body>
+</html>
