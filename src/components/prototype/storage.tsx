@@ -26,7 +26,7 @@ export const OBJECT_SCALES: {
 
 type Object = {
   url: string;
-  position: Vector3;
+  position: [number, number];
   scale: Vector3;
   rotation: Euler;
 };
@@ -38,7 +38,14 @@ type Draft = {
 };
 
 const DEFAULT_DRAFT: Draft = {
-  objects: [],
+  objects: [
+    {
+      url: OBJECTS[0].url,
+      position: [52.499019, 13.470723],
+      scale: new Vector3(1, 1, 1),
+      rotation: new Euler(0, 0, 0),
+    },
+  ],
 };
 
 export const draftStorageContext = createContext<{

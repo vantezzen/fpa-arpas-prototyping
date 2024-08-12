@@ -17,6 +17,7 @@ import { DraftStorageProvider } from "./storage";
 import ObjectSelector from "./objectEdit/ObjectSelector";
 import PlaceObject from "./objectEdit/PlaceObject";
 import Objects from "./Objects";
+import { SensorDataProvider } from "./sensorFusion";
 
 function Prototype() {
   return (
@@ -30,13 +31,15 @@ function Prototype() {
         gl={{ antialias: true }}
       >
         <XR>
-          <ambientLight />
+          <SensorDataProvider>
+            <ambientLight />
 
-          <Controllers />
-          <Hands />
+            <Controllers />
+            <Hands />
 
-          <PlaceObject />
-          <Objects />
+            <PlaceObject />
+            <Objects />
+          </SensorDataProvider>
         </XR>
       </Canvas>
     </DraftStorageProvider>

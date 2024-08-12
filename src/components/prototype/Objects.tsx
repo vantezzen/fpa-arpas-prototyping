@@ -1,9 +1,11 @@
 import React from "react";
 import { useDraftStorage } from "./storage";
 import { Gltf } from "@react-three/drei";
+import { usePositionConverter } from "./sensorFusion";
 
 function Objects() {
   const { draft, setDraft } = useDraftStorage();
+  const { convertPosition } = usePositionConverter();
 
   return (
     <>
@@ -11,8 +13,8 @@ function Objects() {
         <Gltf
           key={index}
           src={object.url}
-          position={object.position}
-          scale={object.scale}
+          position={convertPosition(...object.position)}
+          // scale={object.scale}
           rotation={object.rotation}
         />
       ))}
