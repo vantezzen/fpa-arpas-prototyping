@@ -15,6 +15,13 @@ function Homepage() {
         </div>
       </div>
 
+      <Link href="/compass">
+        <Button>Compass Test</Button>
+      </Link>
+      <Link href="/benchmark">
+        <Button>GPS benchmarking</Button>
+      </Link>
+
       <div className="opacity-70">
         <h1 className="text-4xl font-bold mt-12">
           Phase 1: Technolgie-Analyse

@@ -1,260 +1,169 @@
-import { useThree } from "@react-three/fiber";
-import {
+import React, {
   createContext,
-  use,
-  useCallback,
+  useState,
   useContext,
   useEffect,
-  useRef,
-  useState,
+  ReactNode,
 } from "react";
-import { useEffectOnce, useUpdate } from "react-use";
+import { useGeolocation } from "react-use";
 import { Euler, Quaternion, Vector3 } from "three";
-import KalmanFilter from "./KalmanFilter";
+import { Text } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
 
-type SensorPoint = {
-  time: Date;
-  gps: {
-    latitude: number;
-    longitude: number;
-  };
-  compass: {
-    rotation: number;
-  };
-  virtual: {
-    position: Vector3;
-    rotation: Euler;
-  };
-};
-type SensorData = {
-  points: SensorPoint[];
-};
+interface ARGPSContextType {
+  latitude: number | null;
+  longitude: number | null;
+  compass: number;
+}
 
-const DEFAULT_DATA: SensorData = {
-  points: [],
+const ARGPSContext = createContext<ARGPSContextType | null>(null);
+
+export const useARGPS = (): ARGPSContextType => {
+  const context = useContext(ARGPSContext);
+  if (!context) {
+    throw new Error("useARGPS must be used within an ARGPSProvider");
+  }
+  return context;
 };
 
-export const sensorFusionContext = createContext<{
-  sensorData: SensorData;
-  setSensorData: (draft: SensorData) => void;
-}>({
-  sensorData: DEFAULT_DATA,
-  setSensorData: () => {},
-});
+interface ARGPSProviderProps {
+  children: ReactNode;
+}
 
-export function SensorDataProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [sensorData, setSensorData] = useState<SensorData>(DEFAULT_DATA);
-  const state = useThree();
+export const ARGPSProvider: React.FC<ARGPSProviderProps> = ({ children }) => {
+  const [hasPermissions, setHasPermissions] = useState<boolean>(false);
+  const [compass, setCompass] = useState<number>(0);
+  const geolocation = useGeolocation();
 
-  useEffectOnce(() => {
-    let watchId: number;
-    let rotation = 0;
-
-    const handleDeviceOrientation = (event: DeviceOrientationEvent) => {
-      if (event.alpha !== null) {
-        rotation = event.alpha;
+  useEffect(() => {
+    const requestPermissions = async () => {
+      try {
+        await navigator.permissions.query({
+          name: "geolocation" as PermissionName,
+        });
+        await navigator.permissions.query({
+          name: "accelerometer" as PermissionName,
+        });
+        await navigator.permissions.query({
+          name: "magnetometer" as PermissionName,
+        });
+        setHasPermissions(true);
+      } catch (error) {
+        console.error("Error requesting permissions:", error);
       }
     };
 
-    window.addEventListener("deviceorientation", handleDeviceOrientation);
+    requestPermissions();
+  }, []);
 
-    const startTracking = () => {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-
-          const newPoint: SensorPoint = {
-            time: new Date(),
-            gps: {
-              latitude,
-              longitude,
-            },
-            compass: {
-              rotation,
-            },
-            virtual: {
-              position: state.camera.position,
-              rotation: state.camera.rotation,
-            },
-          };
-
-          setSensorData((prev) => ({
-            points: [...prev.points, newPoint],
-          }));
-        },
-        (error) => {
-          console.error("Error getting GPS position:", error);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0,
+  useEffect(() => {
+    if (hasPermissions) {
+      const handleOrientation = (event: DeviceOrientationEvent) => {
+        // @ts-ignore
+        if (event.webkitCompassHeading) {
+          // For iOS devices
+          // @ts-ignore
+          setCompass(event.webkitCompassHeading);
+        } else if (event.alpha !== null) {
+          // For Android devices
+          setCompass(360 - event.alpha);
         }
-      );
-    };
+      };
 
-    startTracking();
+      window.addEventListener("deviceorientationabsolute", handleOrientation);
+      return () => {
+        window.removeEventListener(
+          "deviceorientationabsolute",
+          handleOrientation
+        );
+      };
+    }
+  }, [hasPermissions]);
 
-    return () => {
-      if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-      }
+  const value: ARGPSContextType = {
+    latitude: geolocation.latitude ?? null,
+    longitude: geolocation.longitude ?? null,
+    compass,
+  };
 
-      window.removeEventListener("deviceorientation", handleDeviceOrientation);
-    };
-  });
+  if (!hasPermissions) {
+    return (
+      <Text color="black" anchorX="center" anchorY="middle">
+        Waiting for permissions...
+      </Text>
+    );
+  }
 
   return (
-    <sensorFusionContext.Provider
-      value={{
-        sensorData,
-        setSensorData,
-      }}
-    >
-      {children}
-    </sensorFusionContext.Provider>
+    <ARGPSContext.Provider value={value}>{children}</ARGPSContext.Provider>
   );
-}
+};
 
-export function useSensorFusionContext() {
-  return useContext(sensorFusionContext);
-}
+export const usePositionCalculator = (): ((
+  targetLat: number,
+  targetLon: number
+) => Vector3) => {
+  const { latitude: userLat, longitude: userLon, compass } = useARGPS();
+  const { camera } = useThree();
+  const [cameraQuaternion] = useState(() => new Quaternion());
 
-export function usePositionConverter() {
-  const [initialized, setInitialized] = useState(false);
-  const kfRef = useRef(new KalmanFilter(6, 6)); // 3 for position, 3 for orientation
-  const initialGPSRef = useRef<[number, number] | null>(null);
-  const initialVirtualRef = useRef<Vector3 | null>(null);
-  const orientationOffsetRef = useRef<Quaternion | null>(null);
-  const update = useUpdate();
+  useFrame(() => {
+    camera.getWorldQuaternion(cameraQuaternion);
+  });
 
-  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-  const toDegrees = (radians: number) => (radians * 180) / Math.PI;
+  const calculatePosition = (targetLat: number, targetLon: number): Vector3 => {
+    if (userLat === null || userLon === null) {
+      console.error("User location not available");
+      return new Vector3(0, 0, 0);
+    }
 
-  const getOffsetFromInitialGPS = useCallback(
-    (latitude: number, longitude: number): [number, number] => {
-      if (!initialGPSRef.current) return [0, 0];
-      const R = 6371000; // Earth's radius in meters
-      const dLat = toRadians(latitude - initialGPSRef.current[0]);
-      const dLon = toRadians(longitude - initialGPSRef.current[1]);
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRadians(initialGPSRef.current[0])) *
-          Math.cos(toRadians(latitude)) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const distance = R * c;
-      const bearing = Math.atan2(
-        Math.sin(dLon) * Math.cos(toRadians(latitude)),
-        Math.cos(toRadians(initialGPSRef.current[0])) *
-          Math.sin(toRadians(latitude)) -
-          Math.sin(toRadians(initialGPSRef.current[0])) *
-            Math.cos(toRadians(latitude)) *
-            Math.cos(dLon)
-      );
-      return [distance * Math.sin(bearing), distance * Math.cos(bearing)];
-    },
-    []
-  );
+    const R = 6371000; // Earth's radius in meters
 
-  const updateKalmanFilter = useCallback(
-    (
-      gpsPosition: [number, number],
-      virtualPosition: Vector3,
-      compassRotation: number
-    ) => {
-      console.log("Updating Kalman filter", {
-        gpsPosition,
-        virtualPosition,
-        compassRotation,
-      });
+    const φ1 = (userLat * Math.PI) / 180;
+    const φ2 = (targetLat * Math.PI) / 180;
+    const Δφ = ((targetLat - userLat) * Math.PI) / 180;
+    const Δλ = ((targetLon - userLon) * Math.PI) / 180;
 
-      if (!initialized) {
-        initialGPSRef.current = gpsPosition;
-        initialVirtualRef.current = virtualPosition.clone();
-        orientationOffsetRef.current = new Quaternion().setFromEuler(
-          new Euler(0, compassRotation, 0)
-        );
-        setInitialized(true);
-        return;
-      }
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-      const [offsetX, offsetY] = getOffsetFromInitialGPS(
-        gpsPosition[0],
-        gpsPosition[1]
-      );
-      const gpsX = offsetX;
-      const gpsY = offsetY;
-      const virtualX = virtualPosition.x - initialVirtualRef.current!.x;
-      const virtualY = virtualPosition.z - initialVirtualRef.current!.z; // Note: Y in GPS is Z in Three.js
+    const distance = R * c;
 
-      kfRef.current.predict();
-      kfRef.current.update([
-        gpsX,
-        gpsY,
-        virtualX,
-        virtualY,
-        compassRotation,
-        virtualPosition.y,
-      ]);
-    },
-    [initialized, getOffsetFromInitialGPS]
-  );
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x =
+      Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    const θ = Math.atan2(y, x);
+    const bearing = ((θ * 180) / Math.PI + 360) % 360;
 
-  const sensorData = useSensorFusionContext();
-  useEffect(() => {
-    const latestPoint =
-      sensorData.sensorData.points[sensorData.sensorData.points.length - 1];
-    if (!latestPoint) return;
+    const cameraEuler = new Euler().setFromQuaternion(cameraQuaternion, "YXZ");
+    const cameraYaw = ((cameraEuler.y * 180) / Math.PI + 360) % 360;
 
-    updateKalmanFilter(
-      [latestPoint.gps.latitude, latestPoint.gps.longitude],
-      latestPoint.virtual.position,
-      latestPoint.compass.rotation
-    );
-    update();
-  }, [sensorData.sensorData, updateKalmanFilter]);
+    // Calculate the relative rotation between heading and camera yaw
+    const relativeRotation = (360 - compass - cameraYaw + 360) % 360;
 
-  const convertPosition = useCallback(
-    (latitude: number, longitude: number, elevation: number = 0) => {
-      if (!initialized) {
-        console.warn(
-          "Position converter not initialized. Call updateKalmanFilter first."
-        );
-        return new Vector3();
-      }
+    // Apply the relative rotation to the bearing
+    const virtualBearing = (bearing - relativeRotation + 360) % 360;
+    const virtualBearingRad = (virtualBearing * Math.PI) / 180;
+    const xPosition = distance * Math.cos(virtualBearingRad);
+    const zPosition = distance * Math.sin(virtualBearingRad);
 
-      const [offsetX, offsetY] = getOffsetFromInitialGPS(latitude, longitude);
-      const position = new Vector3(offsetX, elevation, offsetY);
+    console.log("Calculated position:", {
+      // userLat,
+      // userLon,
+      // targetLat,
+      // targetLon,
+      distance,
+      bearing,
+      compass,
+      virtualBearing,
+      // xPosition,
+      // zPosition,
+    });
 
-      // Apply Kalman filter correction
-      const state = kfRef.current.x;
-      position.x += state[2] - state[0]; // Correction based on virtual vs GPS X
-      position.z += state[3] - state[1]; // Correction based on virtual vs GPS Y
-      position.y = state[5]; // Use filtered elevation
+    return new Vector3(xPosition, 0, zPosition);
+  };
 
-      // Apply orientation offset
-      position.applyQuaternion(orientationOffsetRef.current!);
-
-      // Add initial virtual position
-      position.add(initialVirtualRef.current!);
-
-      console.log("Converted position", {
-        latitude,
-        longitude,
-        elevation,
-        position,
-      });
-
-      return position;
-    },
-    [initialized, getOffsetFromInitialGPS]
-  );
-
-  return { updateKalmanFilter, convertPosition };
-}
+  return calculatePosition;
+};
